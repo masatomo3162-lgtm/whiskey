@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#4A2F1C"/>
+      <stop offset="1" stop-color="#1C120A"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.5" cy="0.12" r="0.9">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.22"/>
+      <stop offset="0.6" stop-color="#ffffff" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="amber" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#F0CB78"/>
+      <stop offset="0.55" stop-color="#C8862F"/>
+      <stop offset="1" stop-color="#8A4E16"/>
+    </linearGradient>
+  </defs>
+  <rect width="1024" height="1024" fill="url(#bg)"/>
+  <rect width="1024" height="1024" fill="url(#glow)"/>
+    <path d="M356,352 h312 l-34,392 q-6,54 -60,54 h-124 q-54,0 -60,-54 z"
+          fill="#ffffff" opacity="0.10"/>
+    <clipPath id="gclip"><path d="M356,352 h312 l-34,392 q-6,54 -60,54 h-124 q-54,0 -60,-54 z"/></clipPath>
+    <g clip-path="url(#gclip)">
+      <rect x="340" y="470" width="344" height="360" fill="url(#amber)"/>
+      <rect x="430" y="486" width="120" height="96" rx="24" fill="#ffffff" opacity="0.22"/>
+      <rect x="556" y="540" width="86" height="70" rx="20" fill="#ffffff" opacity="0.16"/>
+    </g>
+    <path d="M356,352 h312 l-34,392 q-6,54 -60,54 h-124 q-54,0 -60,-54 z"
+          fill="none" stroke="#ffffff" stroke-width="16" stroke-linejoin="round"/>
+    <path d="M384,470 h256" stroke="#ffffff" stroke-width="10" opacity="0.5"/>
+    <path d="M398,386 l-8,300" stroke="#ffffff" stroke-width="14" stroke-linecap="round" opacity="0.35"/>
+    </svg>

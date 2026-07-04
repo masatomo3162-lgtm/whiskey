@@ -268,8 +268,8 @@ tr:hover td{background:rgba(215,163,67,.05)}
 <div id="detailModal" class="modal" onclick="if(event.target===this)closeDetail()"><div class="modal-inner"><div class="section-title"><h2>ボトルの記録</h2><button class="btn small" onclick="closeDetail()">閉じる</button></div><div id="detailContent"></div></div></div>
 <div id="toastHost"></div>
 <script>
-/* ===== Whisky Cabinet v1.0 コア ===== */
-const APP_VERSION="1.0.0", DATA_VERSION=1;
+/* ===== Whisky Cabinet v1.0.1 コア ===== */
+const APP_VERSION="1.0.1", DATA_VERSION=2;
 const KEY="whisky_cabinet_v1";
 const OLD_KEYS=["whisky_cabinet_v03","whisky_cabinet_v02","whisky_cellar_v01"];
 
@@ -292,8 +292,8 @@ const RANKS=[
 ];
 function calcXP(st){
   let xp=0;
-  for(const b of st.bottles){
-    if(b.status==="手放した")continue;
+  for(const b of (st.bottles||[])){
+    if(b.sample||b.status==="手放した")continue; // サンプルはXP対象外
     xp+=10; // 登録
     xp+=Object.values(b.ratings||{}).filter(v=>Number(v)>0).length*5; // レビュー
     if(tasteDefs.some(([k])=>Number(b.taste?.[k])>0))xp+=5; // フレーバー記録
@@ -301,7 +301,7 @@ function calcXP(st){
     if(b.status==="開栓済み"||b.status==="飲み切り")xp+=15; // 開栓経験
     if(b.status==="飲み切り")xp+=30; // 完飲
   }
-  xp+=(st.snapshots?.length||0)*8; // 棚卸し記録
+  xp+=(st.snapshots||[]).filter(s=>!s.sample).length*8; // サンプル棚卸しは対象外
   xp+=Object.keys(st.badges||{}).length*20; // バッジ
   return xp;
 }
@@ -313,27 +313,32 @@ function rankInfo(xp){
   return {cur,next,idx,pct:next?Math.min(100,into/span*100):100,toNext:next?next.min-xp:0};
 }
 
-/* ---- バッジ定義(判定は保有・状態から導出) ---- */
+/* ---- バッジ定義(サンプルは判定対象外) ---- */
+function achievementBottles(s){return (s.bottles||[]).filter(b=>!b.sample)}
+function achievementOwned(s){return achievementBottles(s).filter(b=>b.status==="未開栓"||b.status==="開栓済み")}
 const BADGES=[
-  {id:"first",em:"🍶",name:"はじめの一本",desc:"最初のボトルを棚に加えた",test:s=>s.bottles.length>=1},
-  {id:"opened",em:"🔓",name:"開栓の儀",desc:"はじめて1本を開栓した",test:s=>s.bottles.some(b=>b.status==="開栓済み"||b.status==="飲み切り")},
-  {id:"finished",em:"🎉",name:"完飲",desc:"はじめて1本を飲み切った",test:s=>s.bottles.some(b=>b.status==="飲み切り")},
-  {id:"islay",em:"🌊",name:"アイラの洗礼",desc:"アイラのボトルを3本所有",test:s=>owned(s).filter(b=>b.region==="アイラ").length>=3},
-  {id:"world",em:"🌍",name:"世界の旅人",desc:"5カ国以上のボトルを所有",test:s=>new Set(owned(s).map(b=>b.country).filter(Boolean)).size>=5},
-  {id:"aged",em:"⏳",name:"熟成の探求者",desc:"18年以上のボトルを所有",test:s=>owned(s).some(b=>Number(b.age)>=18)},
-  {id:"grail",em:"💎",name:"聖杯",desc:"3万円以上のボトルを所有",test:s=>owned(s).some(b=>Number(b.price)>=30000)},
-  {id:"collector",em:"📚",name:"蒐集家",desc:"20本以上を所有",test:s=>owned(s).length>=20},
-  {id:"smoke",em:"💨",name:"煙を愛する者",desc:"スモーキー5のボトルを記録",test:s=>s.bottles.some(b=>Number(b.taste?.smoky)>=5)},
-  {id:"variety",em:"🎨",name:"樽の探検家",desc:"5種類以上のタイプを所有",test:s=>new Set(owned(s).map(b=>b.type).filter(Boolean)).size>=5},
-  {id:"critic",em:"⭐",name:"評論家",desc:"10本以上にレビューを付けた",test:s=>s.bottles.filter(b=>avgRating(b)>0).length>=10},
-  {id:"cellar",em:"🏛️",name:"セラーの主",desc:"開栓枠を10本すべて埋めた",test:s=>s.bottles.filter(b=>b.status==="開栓済み").length>=10},
-  {id:"journal",em:"📖",name:"記録の人",desc:"棚卸し記録を5回残した",test:s=>(s.snapshots?.length||0)>=5},
-  {id:"finisher",em:"🥂",name:"空き瓶の勲章",desc:"5本を飲み切った",test:s=>s.bottles.filter(b=>b.status==="飲み切り").length>=5}
+  {id:"first",em:"🍶",name:"はじめの一本",desc:"最初のボトルを棚に加えた",test:s=>achievementBottles(s).length>=1},
+  {id:"opened",em:"🔓",name:"開栓の儀",desc:"はじめて1本を開栓した",test:s=>achievementBottles(s).some(b=>b.status==="開栓済み"||b.status==="飲み切り")},
+  {id:"finished",em:"🎉",name:"完飲",desc:"はじめて1本を飲み切った",test:s=>achievementBottles(s).some(b=>b.status==="飲み切り")},
+  {id:"islay",em:"🌊",name:"アイラの洗礼",desc:"アイラのボトルを3本所有",test:s=>achievementOwned(s).filter(b=>b.region==="アイラ").length>=3},
+  {id:"world",em:"🌍",name:"世界の旅人",desc:"5カ国以上のボトルを所有",test:s=>new Set(achievementOwned(s).map(b=>b.country).filter(Boolean)).size>=5},
+  {id:"aged",em:"⏳",name:"熟成の探求者",desc:"18年以上のボトルを所有",test:s=>achievementOwned(s).some(b=>Number(b.age)>=18)},
+  {id:"grail",em:"💎",name:"聖杯",desc:"3万円以上のボトルを所有",test:s=>achievementOwned(s).some(b=>Number(b.price)>=30000)},
+  {id:"collector",em:"📚",name:"蒐集家",desc:"20本以上を所有",test:s=>achievementOwned(s).length>=20},
+  {id:"smoke",em:"💨",name:"煙を愛する者",desc:"スモーキー5のボトルを記録",test:s=>achievementBottles(s).some(b=>Number(b.taste?.smoky)>=5)},
+  {id:"variety",em:"🎨",name:"樽の探検家",desc:"5種類以上のタイプを所有",test:s=>new Set(achievementOwned(s).map(b=>b.type).filter(Boolean)).size>=5},
+  {id:"critic",em:"⭐",name:"評論家",desc:"10本以上にレビューを付けた",test:s=>achievementBottles(s).filter(b=>avgRating(b)>0).length>=10},
+  {id:"cellar",em:"🏛️",name:"セラーの主",desc:"設定した開栓枠をすべて埋めた",test:s=>{const max=Math.max(1,Number(s.settings?.maxOpen)||10);return achievementBottles(s).filter(b=>b.status==="開栓済み").length>=max;}},
+  {id:"journal",em:"📖",name:"記録の人",desc:"棚卸し記録を5回残した",test:s=>(s.snapshots||[]).filter(x=>!x.sample).length>=5},
+  {id:"finisher",em:"🥂",name:"空き瓶の勲章",desc:"5本を飲み切った",test:s=>achievementBottles(s).filter(b=>b.status==="飲み切り").length>=5}
 ];
 
 /* ---- 状態 ---- */
 function nowISO(){return new Date().toISOString()}
-function today(){return new Date().toISOString().slice(0,10)}
+function today(date=new Date()){
+  const y=date.getFullYear(),m=String(date.getMonth()+1).padStart(2,"0"),d=String(date.getDate()).padStart(2,"0");
+  return `${y}-${m}-${d}`;
+}
 function nowTime(){return new Date().toTimeString().slice(0,8)}
 function uid(){return (crypto.randomUUID?crypto.randomUUID():Date.now().toString(36)+Math.random().toString(36).slice(2))}
 
@@ -341,7 +346,7 @@ function freshState(withSample){
   const r1=uid(),r2=uid(),now=nowISO();
   const s={dataVersion:DATA_VERSION,reviewers:[{id:r1,name:"レビュアー1"},{id:r2,name:"レビュアー2"}],
     bottles:[],wishlist:[],snapshots:[],badges:{},settings:{maxOpen:10,staleDays:60},
-    changelog:[{v:"1.0.0",d:today(),t:"リニューアル初版。ランク・バッジ・レーダーチャート・棚卸し記録を追加"}]};
+    changelog:[{v:"1.0.0",d:today(),t:"リニューアル初版。ランク・バッジ・レーダーチャート・棚卸し記録を追加"},{v:"1.0.1",d:today(),t:"サンプル実績除外・日付・抽選・復元・保存安全性を修正"}]};
   if(withSample){
     s.bottles=[
       {id:uid(),name:"サンプル：アイラモルト 10年",brand:"Sample Distillery",country:"スコットランド",region:"アイラ",type:"シングルモルト",age:10,abv:46,volume:700,price:5500,purchaseDate:"",openedDate:"",status:"未開栓",remaining:100,rarity:2,tags:["煙","潮"],ratings:{[r1]:5},taste:{smoky:5,sweet:2,fruity:2,spicy:3,smooth:2,body:4,finish:5},notes:"編集・削除できるサンプルです。",image:"",sample:true,createdAt:now,updatedAt:now},
@@ -360,14 +365,24 @@ function migrateOld(old){
     changelog:old.changelog||[{v:"1.0.0",d:today(),t:"旧バージョンから移行"}]};
 }
 function normalize(s){
+  const oldVersion=Number(s?.dataVersion)||1;
   s.dataVersion=DATA_VERSION;
   s.reviewers=Array.isArray(s.reviewers)&&s.reviewers.length?s.reviewers:[{id:uid(),name:"レビュアー1"}];
-  s.bottles=Array.isArray(s.bottles)?s.bottles.map(b=>({...b,ratings:b.ratings||{},rarity:Number(b.rarity)||1,taste:b.taste||{},tags:Array.isArray(b.tags)?b.tags:[],remaining:b.remaining==null?100:Number(b.remaining)})):[];
+  s.bottles=Array.isArray(s.bottles)?s.bottles.map(b=>({...b,ratings:b.ratings&&typeof b.ratings==="object"?b.ratings:{},rarity:Number(b.rarity)||1,taste:b.taste&&typeof b.taste==="object"?b.taste:{},tags:Array.isArray(b.tags)?b.tags:[],remaining:b.remaining==null?100:Number(b.remaining)})):[];
   s.wishlist=Array.isArray(s.wishlist)?s.wishlist:[];
   s.snapshots=Array.isArray(s.snapshots)?s.snapshots:[];
-  s.badges=s.badges&&typeof s.badges==="object"?s.badges:{};
-  s.settings=Object.assign({maxOpen:10,staleDays:60},s.settings||{});
+  s.badges=s.badges&&typeof s.badges==="object"&&!Array.isArray(s.badges)?s.badges:{};
+  s.settings=Object.assign({maxOpen:10,staleDays:60},s.settings&&typeof s.settings==="object"?s.settings:{});
+  s.settings.maxOpen=Math.max(1,Math.min(30,Number(s.settings.maxOpen)||10));
   s.changelog=Array.isArray(s.changelog)?s.changelog:[{v:APP_VERSION,d:today(),t:"初版"}];
+  if(oldVersion<2){
+    // v1.0.0でサンプルから獲得した可能性のあるバッジを、実データだけで再検証する。
+    const oldBadges={...s.badges},clean={};
+    const realView={...s,bottles:s.bottles.filter(b=>!b.sample),snapshots:s.snapshots.filter(x=>!x.sample),badges:{}};
+    for(const badge of BADGES)if(oldBadges[badge.id]&&badge.test(realView))clean[badge.id]=oldBadges[badge.id];
+    s.badges=clean;
+    if(!s.changelog.some(c=>c.v==="1.0.1"))s.changelog.push({v:"1.0.1",d:today(),t:"サンプル実績除外・日付・抽選・復元・保存安全性を修正"});
+  }
   return s;
 }
 function loadState(){
@@ -378,9 +393,25 @@ function loadState(){
   }catch(e){console.error("load失敗",e);}
   return freshState(true); // 完全新規のみサンプル入り
 }
-let state=loadState(), editRatings={}, drawnBottleId=null, knownBadges=null;
+let state=loadState(), editRatings={}, drawnBottleId=null, knownBadges=null, drawTimer=null, drawToken=0;
 
-function persist(){try{localStorage.setItem(KEY,JSON.stringify(state));}catch(e){toast("⚠️","保存に失敗","容量超過の可能性。写真を減らすか復元用にバックアップを。");}checkBadges();renderAll();}
+function storageBytes(){try{return new Blob([JSON.stringify(state)]).size}catch(e){return 0}}
+function storageInfoText(){const b=storageBytes(),mb=b/1024/1024;return `現在の推定使用量：${mb.toFixed(2)} MB${mb>=4?"（容量上限が近い可能性があります）":""}`}
+function persist(){
+  const initial=knownBadges===null,awarded=checkBadges(false);
+  try{
+    localStorage.setItem(KEY,JSON.stringify(state));
+  }catch(e){
+    for(const id of awarded)delete state.badges[id];
+    console.error("保存失敗",e);
+    toast("⚠️","保存に失敗","ブラウザ容量超過の可能性があります。写真を減らすかバックアップを保存してください。");
+    alert("保存に失敗しました。写真データによるブラウザ容量超過の可能性があります。今回の変更は再読み込み後に失われることがあります。");
+    renderAll();return false;
+  }
+  if(!initial)for(const id of awarded){const b=BADGES.find(x=>x.id===id);if(b)toast(b.em,"バッジ獲得！",b.name);}
+  knownBadges=Object.keys(state.badges);
+  renderAll();return true;
+}
 
 /* ---- 導出ユーティリティ ---- */
 function owned(s){return s.bottles.filter(b=>b.status==="未開栓"||b.status==="開栓済み")}
@@ -406,16 +437,14 @@ function toast(em,tt,td){
 }
 
 /* ---- バッジ解除検知 ---- */
-function checkBadges(){
-  let changed=false;
+function checkBadges(notify=true){
+  const initial=knownBadges===null,awarded=[];
   for(const b of BADGES){
-    const got=b.test(state);
-    if(got&&!state.badges[b.id]){state.badges[b.id]=today();changed=true;
-      if(knownBadges!==null)toast(b.em,"バッジ獲得！",b.name); // 初回ロード時は通知しない
-    }
+    if(b.test(state)&&!state.badges[b.id]){state.badges[b.id]=today();awarded.push(b.id);}
   }
-  if(knownBadges===null)knownBadges=Object.keys(state.badges).slice();
-  if(changed)localStorage.setItem(KEY,JSON.stringify(state));
+  if(initial)knownBadges=Object.keys(state.badges).slice();
+  if(notify&&!initial)for(const id of awarded){const b=BADGES.find(x=>x.id===id);if(b)toast(b.em,"バッジ獲得！",b.name);}
+  return awarded;
 }
 
 /* ===== Canvasグラフ ===== */
@@ -499,14 +528,16 @@ function drawLine(cv,points){
   c.fillStyle="#8a7a64";c.textAlign="center";c.textBaseline="alphabetic";const step=Math.max(1,Math.ceil(points.length/6));
   points.forEach((p,i)=>{if(i%step===0||i===points.length-1)c.fillText((p.x||"").slice(5),X(i),h-8);});
 }
-/* ===== Whisky Cabinet v1.0 ビュー ===== */
+/* ===== Whisky Cabinet v1.0.1 ビュー ===== */
 const PAGES=[["dashboard","🏠","ホーム"],["bottles","🥃","ボトル"],["form","✍️","登録"],["opening","🍾","開栓棚"],["ranks","🎖️","利き酒師"],["wishlist","🛒","欲しい5選"],["snapshots","📖","棚卸し"],["settings","⚙️","設定"]];
 let currentPage="dashboard";
 
 function renderNav(){
   document.getElementById("nav").innerHTML=PAGES.map(([id,ic,l])=>`<button data-page="${id}" class="${id===currentPage?'active':''}" onclick="go('${id}')"><span class="ico">${ic}</span>${l}</button>`).join("");
 }
+function cancelDrawSpin(){drawToken++;if(drawTimer){clearTimeout(drawTimer);drawTimer=null;}}
 function go(id){
+  if(currentPage==="opening"&&id!=="opening")cancelDrawSpin();
   currentPage=id;renderNav();render();
   try{window.scrollTo({top:0,behavior:"smooth"});}catch(e){}
 }
@@ -649,6 +680,8 @@ function afterFormRender(){
   document.getElementById("f_taste").innerHTML=tasteDefs.map(([k,l])=>`<div class="review-box"><div class="slider-row"><span class="muted">${l}</span><input id="ft_${k}" type="range" min="1" max="5" value="3" oninput="document.getElementById('ftv_${k}').textContent=this.value"><strong id="ftv_${k}" style="color:#f0cb78">3</strong></div></div>`).join("");
   const cam=document.getElementById("f_cameraArea"),lbl=document.getElementById("f_photoLabel"),mob=supportsCamera();
   cam.hidden=!mob;lbl.textContent=mob?"写真ライブラリから選択":"ボトル写真";
+  const libraryInput=document.getElementById("f_imageFile"),cameraInput=document.getElementById("f_cameraFile");
+  if(libraryInput&&cameraInput){libraryInput.onchange=()=>{if(libraryInput.files.length)cameraInput.value="";};cameraInput.onchange=()=>{if(cameraInput.files.length)libraryInput.value="";};}
   renderRatingEditors();
   if(!document.getElementById("f_id").value&&!formLoaded)applyBottleToForm(null);
 }
@@ -686,8 +719,8 @@ async function saveBottle(e){
   let image=existing?.image||"";const file=(g("f_cameraFile")?.files[0])||g("f_imageFile").files[0];if(file)image=await compressImage(file);
   const taste={};tasteDefs.forEach(([k])=>taste[k]=Number(g("ft_"+k).value));
   const now=nowISO();
-  const openedDate=g("f_openedDate").value||((status==="開栓済み"&&existing?.status!=="開栓済み")?today():existing?.openedDate||"");
-  let remaining=Number(g("f_remaining").value);if(status==="飲み切り")remaining=0;if(status==="未開栓")remaining=100;
+  let openedDate=g("f_openedDate").value||((status==="開栓済み"&&existing?.status!=="開栓済み")?today():existing?.openedDate||"");
+  let remaining=Number(g("f_remaining").value);if(status==="飲み切り")remaining=0;if(status==="未開栓"){remaining=100;openedDate="";}
   const b={id:id||uid(),name:g("f_name").value.trim(),brand:g("f_brand").value.trim(),country:g("f_country").value,region:g("f_region").value,type:g("f_type").value,
     age:Number(g("f_age").value)||0,abv:Number(g("f_abv").value)||0,volume:Number(g("f_volume").value)||0,price:Number(g("f_price").value)||0,
     purchaseDate:g("f_purchaseDate").value,openedDate,status,remaining,rarity:Number(g("f_rarity").value)||1,
@@ -754,16 +787,24 @@ function renderDraw(){
   box.innerHTML=`<div><div class="draw-emoji">🎲</div><h2 style="font-family:var(--serif)">次に開ける一本</h2><p class="muted">未開栓 ${sealed.length}本 から運命の一本を選びます。</p><div class="reel" id="reel"></div><button class="btn primary" id="drawBtn" onclick="spinDraw()">抽選する</button></div>`;
 }
 function spinDraw(){
-  const sealed=state.bottles.filter(b=>b.status==="未開栓");if(!sealed.length)return;
-  const reel=document.getElementById("reel"),btn=document.getElementById("drawBtn");if(btn)btn.disabled=true;
-  let n=0;const total=16+Math.floor(Math.random()*6);
-  const tick=()=>{const b=sealed[Math.floor(Math.random()*sealed.length)];reel.textContent="🥃 "+b.name;n++;
-    if(n<total){setTimeout(tick,60+n*11);}else{finalizeDraw();}};
+  cancelDrawSpin();
+  const sealed=state.bottles.filter(b=>b.status==="未開栓");if(!sealed.length||currentPage!=="opening")return;
+  const reel=document.getElementById("reel"),btn=document.getElementById("drawBtn");if(!reel||!btn)return;btn.disabled=true;
+  const token=drawToken;let n=0;const total=16+Math.floor(Math.random()*6);
+  const tick=()=>{
+    if(token!==drawToken||currentPage!=="opening"||!document.getElementById("reel")){drawTimer=null;return;}
+    const current=state.bottles.filter(b=>b.status==="未開栓");if(!current.length){renderDraw();return;}
+    const b=current[Math.floor(Math.random()*current.length)],liveReel=document.getElementById("reel");if(!liveReel)return;
+    liveReel.textContent="🥃 "+b.name;n++;
+    if(n<total)drawTimer=setTimeout(tick,60+n*11);else{drawTimer=null;finalizeDraw(token);}
+  };
   tick();
 }
-function finalizeDraw(){
-  const sealed=state.bottles.filter(b=>b.status==="未開栓");const b=sealed[Math.floor(Math.random()*sealed.length)];drawnBottleId=b.id;
-  document.getElementById("drawBox").innerHTML=`<div>${b.image?`<img src="${b.image}" style="width:180px;max-height:180px;object-fit:cover;border-radius:14px;border:1px solid var(--line2)">`:`<div class="draw-emoji">🥃</div>`}
+function finalizeDraw(token=drawToken){
+  if(token!==drawToken||currentPage!=="opening")return;
+  const box=document.getElementById("drawBox"),sealed=state.bottles.filter(b=>b.status==="未開栓");if(!box||!sealed.length){renderDraw();return;}
+  const b=sealed[Math.floor(Math.random()*sealed.length)];drawnBottleId=b.id;
+  box.innerHTML=`<div>${b.image?`<img src="${b.image}" style="width:180px;max-height:180px;object-fit:cover;border-radius:14px;border:1px solid var(--line2)">`:`<div class="draw-emoji">🥃</div>`}
     <h2 style="font-family:var(--serif);margin:10px 0 2px">${escapeHtml(b.name)}</h2><p class="muted">${escapeHtml(b.country)}・${escapeHtml(b.type)}${b.age?`・${b.age}年`:""}</p>
     <div class="price" style="font-size:18px">${priceText(b.price)}</div>
     <div style="display:flex;gap:8px;justify-content:center;margin-top:12px"><button class="btn primary" onclick="confirmOpenDrawn()">この一本を開ける</button><button class="btn ghost" onclick="renderDraw()">もう一度</button></div></div>`;
@@ -862,7 +903,8 @@ function takeSnapshot(){
     unopened:state.bottles.filter(b=>b.status==="未開栓").length,
     opened:state.bottles.filter(b=>b.status==="開栓済み").length,
     finished:state.bottles.filter(b=>b.status==="飲み切り").length,
-    totalValue:ow.reduce((s,b)=>s+(Number(b.price)||0),0),memo:""};
+    totalValue:ow.reduce((s,b)=>s+(Number(b.price)||0),0),memo:"",
+    sample:state.bottles.length>0&&state.bottles.every(b=>b.sample)};
   const same=state.snapshots.filter(s=>s.date===snap.date);
   if(same.length&&!confirm(`本日(${snap.date})の記録が既にあります。追加で記録しますか？（キャンセルで中止）`))return;
   state.snapshots.push(snap);persist();toast("📖","棚卸しを記録しました",`所有 ${snap.owned}本 / ${snap.totalValue.toLocaleString()}円`);
@@ -896,6 +938,7 @@ function vSettings(m){
       <button class="btn danger" onclick="resetAll()">全データ初期化</button>
     </div>
     <div class="notice" style="margin-top:12px">データはこのブラウザ内(localStorage)にのみ保存され、外部へ送信されません。端末変更やブラウザのデータ削除に備え、バックアップ保存を定期的に使ってください。</div>
+    <div class="notice info" style="margin-top:8px">${storageInfoText()}。写真を多く登録すると端末・ブラウザによって保存上限に達する場合があります。</div>
   </div>
   <div class="card" style="margin-top:14px"><h2 style="font-family:var(--serif);margin-bottom:10px">整合性チェック</h2>
     <p class="muted">登録データを点検します（名前なし・残量の異常・重複など）。</p>
@@ -915,11 +958,34 @@ function renderReviewerList(){const el=document.getElementById("reviewerList");i
 function addReviewer(){const el=document.getElementById("newReviewer"),name=el.value.trim();if(!name)return;if(state.reviewers.length>=10){alert("レビュアーは最大10人です。");return;}state.reviewers.push({id:uid(),name});el.value="";persist();}
 function renameReviewer(id,name){const r=state.reviewers.find(x=>x.id===id);if(r&&name.trim()){r.name=name.trim();persist();}}
 function removeReviewer(id){if(state.reviewers.length<=1){alert("レビュアーは最低1人必要です。");return;}const r=state.reviewers.find(x=>x.id===id);if(!r||!confirm(`「${r.name}」を削除しますか？この人の評価も消えます。`))return;state.reviewers=state.reviewers.filter(x=>x.id!==id);state.bottles.forEach(b=>{if(b.ratings)delete b.ratings[id];});persist();}
-function saveSettings(){const v=Number(document.getElementById("setMaxOpen").value);if(v>=1&&v<=30){state.settings.maxOpen=v;persist();toast("⚙️","設定を保存しました");}}
+function saveSettings(){
+  const v=Number(document.getElementById("setMaxOpen").value),openN=state.bottles.filter(b=>b.status==="開栓済み").length;
+  if(!Number.isInteger(v)||v<1||v>30){alert("開栓上限は1〜30の整数で入力してください。");return;}
+  if(v<openN){alert(`現在${openN}本を開栓中のため、上限を${v}本には変更できません。`);return;}
+  state.settings.maxOpen=v;persist();toast("⚙️","設定を保存しました");
+}
 
+function validateBackupData(data){
+  if(!data||typeof data!=="object"||Array.isArray(data))throw new Error("ルート形式が不正です");
+  if(!Array.isArray(data.reviewers)||!data.reviewers.length)throw new Error("レビュアー情報が不正です");
+  const ids=new Set();
+  for(const r of data.reviewers){if(!r||typeof r!=="object"||typeof r.id!=="string"||!r.id||typeof r.name!=="string"||!r.name.trim()||ids.has(r.id))throw new Error("レビュアー情報が不正です");ids.add(r.id);}
+  if(!Array.isArray(data.bottles))throw new Error("ボトル情報が不正です");
+  const allowed=new Set(STATUSES);
+  for(const b of data.bottles){
+    if(!b||typeof b!=="object"||typeof b.id!=="string"||!b.id||typeof b.name!=="string"||!b.name.trim()||!allowed.has(b.status))throw new Error("ボトル情報が不正です");
+    if(b.remaining!=null&&(!Number.isFinite(Number(b.remaining))||Number(b.remaining)<0||Number(b.remaining)>100))throw new Error("残量が不正です");
+    if(b.ratings!=null&&(typeof b.ratings!=="object"||Array.isArray(b.ratings)))throw new Error("評価情報が不正です");
+  }
+  for(const k of ["wishlist","snapshots","changelog"])if(data[k]!=null&&!Array.isArray(data[k]))throw new Error(`${k}が不正です`);
+  if(data.badges!=null&&(typeof data.badges!=="object"||Array.isArray(data.badges)))throw new Error("バッジ情報が不正です");
+  if(data.settings!=null){if(typeof data.settings!=="object"||Array.isArray(data.settings))throw new Error("設定が不正です");const m=Number(data.settings.maxOpen);if(data.settings.maxOpen!=null&&(!Number.isInteger(m)||m<1||m>30))throw new Error("開栓上限が不正です");}
+  return true;
+}
 function exportJSON(){download(`whisky_cabinet_backup_${today()}.json`,JSON.stringify(state,null,2),"application/json");toast("📥","バックアップを保存しました");}
 function importJSON(e){const f=e.target.files[0];if(!f)return;const r=new FileReader();
-  r.onload=()=>{try{const data=normalize(JSON.parse(r.result));if(confirm("現在のデータを、読み込むデータで置き換えますか？（先に現在のデータをバックアップ推奨）")){state=data;knownBadges=null;persist();toast("♻️","復元しました");go("dashboard");}}catch(err){alert("正しいバックアップファイルではありません。");}e.target.value="";};
+  r.onload=()=>{try{const raw=JSON.parse(r.result);validateBackupData(raw);const data=normalize(raw);if(confirm("現在のデータを、読み込むデータで置き換えますか？（先に現在のデータをバックアップ推奨）")){const previous=state;state=data;knownBadges=null;if(persist()){toast("♻️","復元しました");go("dashboard");}else state=previous;}}catch(err){console.error(err);alert("バックアップファイルの形式が正しくありません。復元は行われませんでした。");}e.target.value="";};
+  r.onerror=()=>{alert("バックアップファイルを読み込めませんでした。");e.target.value="";};
   r.readAsText(f);}
 function exportCSV(){
   const H=["name","brand","country","region","type","age","abv","volume","price","purchaseDate","openedDate","status","remaining","rarity","averageRating","tags","notes"];
@@ -930,8 +996,15 @@ function download(name,text,type){const a=document.createElement("a");a.href=URL
 function addSample(){
   if(anyRealData()){alert("すでに実データがあるため、サンプルは作成しません（データ保護）。");return;}
   if(state.bottles.some(b=>b.sample)){toast("ℹ️","サンプルは既にあります");return;}
-  const fs=freshState(true);state.bottles=fs.bottles;persist();toast("🥃","サンプルを作成しました");go("dashboard");}
-function removeSample(){const n=state.bottles.filter(b=>b.sample).length;if(!n){toast("ℹ️","サンプルはありません");return;}state.bottles=state.bottles.filter(b=>!b.sample);persist();toast("🧹","サンプルを削除しました");}
+  const fs=freshState(true),reviewerId=state.reviewers[0]?.id;
+  state.bottles=fs.bottles.map(b=>({...b,ratings:reviewerId?{[reviewerId]:Number(Object.values(b.ratings||{})[0])||0}:{}}));
+  persist();toast("🥃","サンプルを作成しました");go("dashboard");
+}function removeSample(){
+  const n=state.bottles.filter(b=>b.sample).length;if(!n){toast("ℹ️","サンプルはありません");return;}
+  state.bottles=state.bottles.filter(b=>!b.sample);state.snapshots=state.snapshots.filter(s=>!s.sample);
+  const clean={};for(const badge of BADGES)if(state.badges[badge.id]&&badge.test(state))clean[badge.id]=state.badges[badge.id];state.badges=clean;
+  knownBadges=Object.keys(clean);persist();toast("🧹","サンプルを削除しました");
+}
 function resetAll(){if(!confirm("すべてのデータを初期化しますか？この操作は元に戻せません。"))return;if(!confirm("本当に初期化しますか？"))return;state=freshState(false);knownBadges=null;persist();toast("♻️","初期化しました");go("dashboard");}
 function runIntegrity(){
   const out=[];const seen=new Map();
@@ -950,7 +1023,11 @@ function runIntegrity(){
 
 /* ===== 全体レンダリング ===== */
 function renderAll(){renderRankbar();if(currentPage==="dashboard")vDashboard(document.getElementById("main"));else if(currentPage==="bottles")refreshBottles();else if(currentPage==="opening")vOpening(document.getElementById("main"));else if(currentPage==="ranks")vRanks(document.getElementById("main"));else if(currentPage==="wishlist")vWishlist(document.getElementById("main"));else if(currentPage==="snapshots")vSnapshots(document.getElementById("main"));else if(currentPage==="settings"){renderReviewerList();}else if(currentPage==="form")renderRatingEditors();}
-function init(){document.getElementById("footer").textContent=`Whisky Cabinet v${APP_VERSION} — Standalone browser app`;checkBadges();renderNav();renderRankbar();render();window.addEventListener("resize",()=>{if(["dashboard","snapshots"].includes(currentPage))render();});}
+function init(){
+  document.getElementById("footer").textContent=`Whisky Cabinet v${APP_VERSION} — Standalone browser app`;
+  const awarded=checkBadges(false);try{if(awarded.length)localStorage.setItem(KEY,JSON.stringify(state));}catch(e){console.error("初期保存失敗",e);}knownBadges=Object.keys(state.badges);
+  renderNav();renderRankbar();render();window.addEventListener("resize",()=>{if(["dashboard","snapshots"].includes(currentPage))render();});
+}
 init();
 
 </script>

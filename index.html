@@ -281,9 +281,37 @@ tr:hover td{background:rgba(215,163,67,.05)}
 <div id="toastHost"></div>
 <script>
 /* ===== Whisky Cabinet v1.0.2 コア ===== */
-const APP_VERSION="1.0.2", DATA_VERSION=2;
+const APP_VERSION="1.0.3", DATA_VERSION=2;
 const KEY="whisky_cabinet_v1";
 const OLD_KEYS=["whisky_cabinet_v03","whisky_cabinet_v02","whisky_cellar_v01"];
+/* ---- IndexedDB（写真を含む本体データの保存先。localStorageの容量上限を回避） ---- */
+const IDB_NAME="whisky_cabinet", IDB_STORE="kv", IDB_VER=1;
+let _idbPromise=null;
+function idbOpen(){
+  if(_idbPromise)return _idbPromise;
+  _idbPromise=new Promise((res,rej)=>{
+    let rq;try{rq=indexedDB.open(IDB_NAME,IDB_VER);}catch(e){rej(e);return;}
+    rq.onupgradeneeded=()=>{const db=rq.result;if(!db.objectStoreNames.contains(IDB_STORE))db.createObjectStore(IDB_STORE);};
+    rq.onsuccess=()=>res(rq.result);
+    rq.onerror=()=>rej(rq.error);
+  });
+  return _idbPromise;
+}
+async function idbGet(key){
+  const db=await idbOpen();
+  return new Promise((res,rej)=>{
+    const rq=db.transaction(IDB_STORE,"readonly").objectStore(IDB_STORE).get(key);
+    rq.onsuccess=()=>res(rq.result);rq.onerror=()=>rej(rq.error);
+  });
+}
+async function idbSet(key,val){
+  const db=await idbOpen();
+  return new Promise((res,rej)=>{
+    const tx=db.transaction(IDB_STORE,"readwrite");
+    tx.objectStore(IDB_STORE).put(val,key);
+    tx.oncomplete=()=>res(true);tx.onerror=()=>rej(tx.error);tx.onabort=()=>rej(tx.error);
+  });
+}
 
 const tasteDefs=[["smoky","スモーキー"],["sweet","甘さ"],["fruity","フルーティー"],["spicy","スパイシー"],["smooth","スムース"],["body","ボディ"],["finish","余韻"]];
 const countries=["スコットランド","日本","アメリカ","アイルランド","カナダ","台湾","インド","イングランド","ウェールズ","フランス","オーストラリア","その他"];
@@ -358,7 +386,7 @@ function freshState(withSample){
   const r1=uid(),r2=uid(),now=nowISO();
   const s={dataVersion:DATA_VERSION,reviewers:[{id:r1,name:"レビュアー1"},{id:r2,name:"レビュアー2"}],
     bottles:[],wishlist:[],snapshots:[],badges:{},settings:{maxOpen:10,staleDays:60},
-    changelog:[{v:"1.0.0",d:today(),t:"リニューアル初版。ランク・バッジ・レーダーチャート・棚卸し記録を追加"},{v:"1.0.1",d:today(),t:"サンプル実績除外・日付・抽選・復元・保存安全性を修正"},{v:"1.0.2",d:today(),t:"写真を高解像度化し、一覧・詳細・抽選画面で切り抜かず全体表示するよう改善"}]};
+    changelog:[{v:"1.0.0",d:today(),t:"リニューアル初版。ランク・バッジ・レーダーチャート・棚卸し記録を追加"},{v:"1.0.1",d:today(),t:"サンプル実績除外・日付・抽選・復元・保存安全性を修正"},{v:"1.0.2",d:today(),t:"写真を高解像度化し、一覧・詳細・抽選画面で切り抜かず全体表示するよう改善"},{v:"1.0.3",d:today(),t:"保存先をlocalStorageからIndexedDBへ移行。写真をたくさん登録しても容量上限に達しにくくなりました（既存データは自動で引き継ぎ）"}]};
   if(withSample){
     s.bottles=[
       {id:uid(),name:"サンプル：アイラモルト 10年",brand:"Sample Distillery",country:"スコットランド",region:"アイラ",type:"シングルモルト",age:10,abv:46,volume:700,price:5500,purchaseDate:"",openedDate:"",status:"未開栓",remaining:100,rarity:2,tags:["煙","潮"],ratings:{[r1]:5},taste:{smoky:5,sweet:2,fruity:2,spicy:3,smooth:2,body:4,finish:5},notes:"編集・削除できるサンプルです。",image:"",sample:true,createdAt:now,updatedAt:now},
@@ -396,31 +424,45 @@ function normalize(s){
     if(!s.changelog.some(c=>c.v==="1.0.1"))s.changelog.push({v:"1.0.1",d:today(),t:"サンプル実績除外・日付・抽選・復元・保存安全性を修正"});
   }
   if(!s.changelog.some(c=>c.v==="1.0.2"))s.changelog.push({v:"1.0.2",d:today(),t:"写真を高解像度化し、一覧・詳細・抽選画面で切り抜かず全体表示するよう改善"});
+  if(!s.changelog.some(c=>c.v==="1.0.3"))s.changelog.push({v:"1.0.3",d:today(),t:"保存先をlocalStorageからIndexedDBへ移行。写真をたくさん登録しても容量上限に達しにくくなりました（既存データは自動で引き継ぎ）"});
   return s;
 }
-function loadState(){
+async function loadState(){
+  // 1) 新しい保存先(IndexedDB)を最優先で読む。構造化クローン保存なのでJSON.parse不要。
+  try{
+    const v=await idbGet(KEY);
+    if(v)return normalize(v);
+  }catch(e){console.error("IDB load失敗",e);}
+  // 2) IndexedDBが空なら、旧localStorageのデータを読み込んでIndexedDBへ移行（既存データの引き継ぎ）。
   try{
     const v=localStorage.getItem(KEY);
-    if(v)return normalize(JSON.parse(v));
-    for(const ok of OLD_KEYS){const o=localStorage.getItem(ok);if(o)return normalize(migrateOld(JSON.parse(o)));}
-  }catch(e){console.error("load失敗",e);}
-  return freshState(true); // 完全新規のみサンプル入り
+    if(v){const s=normalize(JSON.parse(v));try{await idbSet(KEY,s);}catch(_){}return s;}
+    for(const ok of OLD_KEYS){const o=localStorage.getItem(ok);if(o){const s=normalize(migrateOld(JSON.parse(o)));try{await idbSet(KEY,s);}catch(_){}return s;}}
+  }catch(e){console.error("localStorage移行失敗",e);}
+  // 3) どこにも無ければ完全新規（サンプル入り）。初回からIDBに保存しておく。
+  const s=freshState(true);try{await idbSet(KEY,s);}catch(_){}return s;
 }
-let state=loadState(), editRatings={}, drawnBottleId=null, knownBadges=null, drawTimer=null, drawToken=0;
+let state=freshState(false), editRatings={}, drawnBottleId=null, knownBadges=null, drawTimer=null, drawToken=0;
 
 function storageBytes(){try{return new Blob([JSON.stringify(state)]).size}catch(e){return 0}}
-function storageInfoText(){const b=storageBytes(),mb=b/1024/1024;return `現在の推定使用量：${mb.toFixed(2)} MB${mb>=4?"（容量上限が近い可能性があります）":""}`}
+function storageInfoText(){const b=storageBytes(),mb=b/1024/1024;return `現在のデータ量：約 ${mb.toFixed(2)} MB（IndexedDBに保存。写真を多く登録しても余裕があります）`}
+// IndexedDBへの保存を直列化。保存中に次の保存要求が来たら、末尾で最新stateをもう一度書く（競合防止＆常に最新を保存）。
+let _saving=false,_savePending=false;
+async function _flushSave(){
+  if(_saving){_savePending=true;return;}
+  _saving=true;
+  try{
+    await idbSet(KEY,state);
+  }catch(e){
+    console.error("保存失敗",e);
+    toast("⚠️","保存に失敗","ストレージへの書き込みに失敗しました。バックアップ保存をおすすめします。");
+  }
+  _saving=false;
+  if(_savePending){_savePending=false;_flushSave();}
+}
 function persist(){
   const initial=knownBadges===null,awarded=checkBadges(false);
-  try{
-    localStorage.setItem(KEY,JSON.stringify(state));
-  }catch(e){
-    for(const id of awarded)delete state.badges[id];
-    console.error("保存失敗",e);
-    toast("⚠️","保存に失敗","ブラウザ容量超過の可能性があります。写真を減らすかバックアップを保存してください。");
-    alert("保存に失敗しました。写真データによるブラウザ容量超過の可能性があります。今回の変更は再読み込み後に失われることがあります。");
-    renderAll();return false;
-  }
+  _flushSave(); // 非同期・直列でIndexedDBへ保存。UIはブロックしない。
   if(!initial)for(const id of awarded){const b=BADGES.find(x=>x.id===id);if(b)toast(b.em,"バッジ獲得！",b.name);}
   knownBadges=Object.keys(state.badges);
   renderAll();return true;
@@ -956,8 +998,8 @@ function vSettings(m){
       <button class="btn" onclick="removeSample()">サンプルデータを削除</button>
       <button class="btn danger" onclick="resetAll()">全データ初期化</button>
     </div>
-    <div class="notice" style="margin-top:12px">データはこのブラウザ内(localStorage)にのみ保存され、外部へ送信されません。端末変更やブラウザのデータ削除に備え、バックアップ保存を定期的に使ってください。</div>
-    <div class="notice info" style="margin-top:8px">${storageInfoText()}。写真は最大1200px・高画質で保存します。写真を多く登録すると端末・ブラウザによって保存上限に達する場合があります。</div>
+    <div class="notice" style="margin-top:12px">データはこのブラウザ内(IndexedDB)にのみ保存され、外部へ送信されません。端末変更やブラウザのデータ削除に備え、バックアップ保存を定期的に使ってください。</div>
+    <div class="notice info" style="margin-top:8px">${storageInfoText()}。写真は最大1200px・高画質で保存します。</div>
   </div>
   <div class="card" style="margin-top:14px"><h2 style="font-family:var(--serif);margin-bottom:10px">整合性チェック</h2>
     <p class="muted">登録データを点検します（名前なし・残量の異常・重複など）。</p>
@@ -1042,9 +1084,10 @@ function runIntegrity(){
 
 /* ===== 全体レンダリング ===== */
 function renderAll(){renderRankbar();if(currentPage==="dashboard")vDashboard(document.getElementById("main"));else if(currentPage==="bottles")refreshBottles();else if(currentPage==="opening")vOpening(document.getElementById("main"));else if(currentPage==="ranks")vRanks(document.getElementById("main"));else if(currentPage==="wishlist")vWishlist(document.getElementById("main"));else if(currentPage==="snapshots")vSnapshots(document.getElementById("main"));else if(currentPage==="settings"){renderReviewerList();}else if(currentPage==="form")renderRatingEditors();}
-function init(){
+async function init(){
   document.getElementById("footer").textContent=`Whisky Cabinet v${APP_VERSION} — Standalone browser app`;
-  const awarded=checkBadges(false);try{if(awarded.length)localStorage.setItem(KEY,JSON.stringify(state));}catch(e){console.error("初期保存失敗",e);}knownBadges=Object.keys(state.badges);
+  state=await loadState(); // IndexedDBから読込（無ければlocalStorageから移行）。ここで初めてstateが確定する。
+  const awarded=checkBadges(false);if(awarded.length)_flushSave();knownBadges=Object.keys(state.badges);
   renderNav();renderRankbar();render();window.addEventListener("resize",()=>{if(["dashboard","snapshots"].includes(currentPage))render();});
 }
 init();

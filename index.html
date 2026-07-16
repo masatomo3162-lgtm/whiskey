@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- Whisky Cabinet v1.0.4 — データはブラウザのIndexedDBに保存 / 単体HTMLアプリ -->
+<!-- Whisky Cabinet v1.0.5 — データはブラウザのIndexedDBに保存 / 単体HTMLアプリ -->
 <html lang="ja">
 <head>
 <meta charset="UTF-8">
@@ -179,10 +179,16 @@ canvas{max-width:100%;display:block}
 .legend .vl{font-weight:700;color:var(--gold2)}
 
 /* ---- 開栓・抽選 ---- */
-.open-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:12px}
-.open-card{border:1px solid var(--line);border-radius:14px;padding:13px;background:#191309;display:flex;flex-direction:column;gap:8px}
-.open-card h3{font-size:14px;margin:0;color:var(--cream);font-family:var(--serif)}
-.open-head{display:flex;gap:10px;align-items:center}
+/* 開栓棚も通常のボトル棚と同じカード幅・見せ方にする。狭い列で銘柄名が縦書き状になるのを防止。 */
+.open-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+.open-card{cursor:default;min-width:0;display:flex;flex-direction:column}
+.open-card:hover{transform:none;box-shadow:none}
+.open-card .thumb{aspect-ratio:4/3;min-height:150px}
+.open-card .bottle-body{display:flex;flex:1;flex-direction:column;min-width:0}
+.open-card h3{overflow-wrap:anywhere;word-break:normal}
+.open-card .open-meta{min-height:38px}
+.open-card .open-actions{display:flex;gap:7px;flex-wrap:wrap;margin-top:auto;padding-top:11px}
+.open-card .open-remaining{position:absolute;top:9px;right:9px;z-index:2;box-shadow:0 3px 10px rgba(0,0,0,.35)}
 .draw-box{min-height:320px;display:grid;place-items:center;text-align:center}
 .draw-emoji{font-size:64px;filter:drop-shadow(0 6px 10px rgba(0,0,0,.4))}
 .reel{font-family:var(--serif);font-size:20px;color:var(--gold2);min-height:28px}
@@ -283,7 +289,7 @@ tr:hover td{background:rgba(215,163,67,.05)}
 <div id="toastHost"></div>
 <script>
 /* ===== Whisky Cabinet v1.0.2 コア ===== */
-const APP_VERSION="1.0.4", DATA_VERSION=2;
+const APP_VERSION="1.0.5", DATA_VERSION=2;
 const KEY="whisky_cabinet_v1";
 const OLD_KEYS=["whisky_cabinet_v03","whisky_cabinet_v02","whisky_cellar_v01"];
 /* ---- IndexedDB（写真を含む本体データの保存先。localStorageの容量上限を回避） ---- */
@@ -388,7 +394,7 @@ function freshState(withSample){
   const r1=uid(),r2=uid(),now=nowISO();
   const s={dataVersion:DATA_VERSION,reviewers:[{id:r1,name:"レビュアー1"},{id:r2,name:"レビュアー2"}],
     bottles:[],wishlist:[],snapshots:[],badges:{},settings:{maxOpen:10,staleDays:60},
-    changelog:[{v:"1.0.0",d:today(),t:"リニューアル初版。ランク・バッジ・レーダーチャート・棚卸し記録を追加"},{v:"1.0.1",d:today(),t:"サンプル実績除外・日付・抽選・復元・保存安全性を修正"},{v:"1.0.2",d:today(),t:"写真を高解像度化し、一覧・詳細・抽選画面で切り抜かず全体表示するよう改善"},{v:"1.0.3",d:today(),t:"保存先をlocalStorageからIndexedDBへ移行。写真をたくさん登録しても容量上限に達しにくくなりました（既存データは自動で引き継ぎ）"},{v:"1.0.4",d:today(),t:"保存の安全性を強化：IndexedDBへの保存結果を正しく判定・バックアップ復元失敗時は元データへ自動で戻す・保存できない時は画面上部に警告を表示・旧localStorageの再移行を防止"}]};
+    changelog:[{v:"1.0.0",d:today(),t:"リニューアル初版。ランク・バッジ・レーダーチャート・棚卸し記録を追加"},{v:"1.0.1",d:today(),t:"サンプル実績除外・日付・抽選・復元・保存安全性を修正"},{v:"1.0.2",d:today(),t:"写真を高解像度化し、一覧・詳細・抽選画面で切り抜かず全体表示するよう改善"},{v:"1.0.3",d:today(),t:"保存先をlocalStorageからIndexedDBへ移行。写真をたくさん登録しても容量上限に達しにくくなりました（既存データは自動で引き継ぎ）"},{v:"1.0.4",d:today(),t:"保存の安全性を強化：IndexedDBへの保存結果を正しく判定・バックアップ復元失敗時は元データへ自動で戻す・保存できない時は画面上部に警告を表示・旧localStorageの再移行を防止"},{v:"1.0.5",d:today(),t:"開栓棚をボトル棚と同じカード表示へ変更。銘柄名が縦書き状になるレイアウト崩れを修正し、写真・残量・価格・操作を見やすく整理"}]};
   if(withSample){
     s.bottles=[
       {id:uid(),name:"サンプル：アイラモルト 10年",brand:"Sample Distillery",country:"スコットランド",region:"アイラ",type:"シングルモルト",age:10,abv:46,volume:700,price:5500,purchaseDate:"",openedDate:"",status:"未開栓",remaining:100,rarity:2,tags:["煙","潮"],ratings:{[r1]:5},taste:{smoky:5,sweet:2,fruity:2,spicy:3,smooth:2,body:4,finish:5},notes:"編集・削除できるサンプルです。",image:"",sample:true,createdAt:now,updatedAt:now},
@@ -428,6 +434,7 @@ function normalize(s){
   if(!s.changelog.some(c=>c.v==="1.0.2"))s.changelog.push({v:"1.0.2",d:today(),t:"写真を高解像度化し、一覧・詳細・抽選画面で切り抜かず全体表示するよう改善"});
   if(!s.changelog.some(c=>c.v==="1.0.3"))s.changelog.push({v:"1.0.3",d:today(),t:"保存先をlocalStorageからIndexedDBへ移行。写真をたくさん登録しても容量上限に達しにくくなりました（既存データは自動で引き継ぎ）"});
   if(!s.changelog.some(c=>c.v==="1.0.4"))s.changelog.push({v:"1.0.4",d:today(),t:"保存の安全性を強化：IndexedDBへの保存結果を正しく判定・バックアップ復元失敗時は元データへ自動で戻す・保存できない時は画面上部に警告を表示・旧localStorageの再移行を防止"});
+  if(!s.changelog.some(c=>c.v==="1.0.5"))s.changelog.push({v:"1.0.5",d:today(),t:"開栓棚をボトル棚と同じカード表示へ変更。銘柄名が縦書き状になるレイアウト崩れを修正し、写真・残量・価格・操作を見やすく整理"});
   return s;
 }
 async function loadState(){
@@ -866,9 +873,19 @@ function vOpening(m){
       <div id="openList" class="open-grid"></div></div>
     <div class="card draw-box" id="drawBox"></div></div>`;
   document.getElementById("openList").innerHTML=open.length?open.map(b=>`
-    <div class="open-card"><div class="open-head"><div class="glass"><div class="cup"><div class="fluid" style="height:${b.remaining}%"></div></div></div><div><h3>${escapeHtml(b.name)}</h3><div class="meta">${escapeHtml(b.type)}・残${b.remaining}%</div></div></div>
-    <div class="price" style="font-size:13px">${priceText(b.price)}</div>
-    <div style="display:flex;gap:6px;flex-wrap:wrap"><button class="btn small" onclick="changeRemaining('${b.id}')">残量</button><button class="btn good small" onclick="finishBottle('${b.id}')">飲み切った</button></div></div>`).join(""):`<div class="empty" style="grid-column:1/-1">開栓中のボトルはありません。<br>下の抽選で次の一本を選びましょう。</div>`;
+    <article class="bottle open-card">
+      <div class="thumb">
+        ${b.image?`<img src="${b.image}" alt="${escapeHtml(b.name)}" loading="lazy" decoding="async">`:"🥃"}
+        <span class="chip st-open open-remaining">残${b.remaining}%</span>
+      </div>
+      <div class="bottle-body">
+        <h3>${escapeHtml(b.name)}</h3>
+        <div class="meta open-meta">${escapeHtml(b.brand||b.country||"")}${b.type?`・${escapeHtml(b.type)}`:""}${b.openedDate?`<br>開栓 ${escapeHtml(b.openedDate)}`:""}</div>
+        <div class="chips" style="margin:9px 0"><span class="chip st-open">開栓済み</span>${b.age?`<span class="chip">${b.age}年</span>`:""}${b.abv?`<span class="chip">${b.abv}%</span>`:""}</div>
+        <div class="price" style="font-size:14px">${priceText(b.price)}</div>
+        <div class="open-actions"><button class="btn small" onclick="changeRemaining('${b.id}')">残量</button><button class="btn good small" onclick="finishBottle('${b.id}')">飲み切った</button></div>
+      </div>
+    </article>`).join(""):`<div class="empty" style="grid-column:1/-1">開栓中のボトルはありません。<br>下の抽選で次の一本を選びましょう。</div>`;
   renderDraw();
 }
 function renderDraw(){

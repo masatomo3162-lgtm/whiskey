@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<!-- Whisky Cabinet v1.0.5 — データはブラウザのIndexedDBに保存 / 単体HTMLアプリ -->
+<!-- Whisky Cabinet v1.0.6 — データはブラウザのIndexedDBに保存 / 単体HTMLアプリ -->
 <html lang="ja">
 <head>
 <meta charset="UTF-8">
@@ -125,7 +125,11 @@ input:focus,select:focus,textarea:focus{border-color:var(--gold)}
 textarea{min-height:88px;resize:vertical}
 .form-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
 .span2{grid-column:span 2}.span4{grid-column:span 4}
-.filters{display:grid;grid-template-columns:2fr repeat(4,1fr);gap:9px;margin-bottom:14px}
+.filters{display:grid;grid-template-columns:repeat(auto-fit,minmax(168px,1fr));gap:9px;margin-bottom:14px;align-items:center}
+.filters>*{min-width:0;width:100%}
+.filters .f-wide{grid-column:span 2}
+.filters select,.filters input{min-height:42px}
+.filters .btn{min-height:42px}
 
 /* ---- ボトルグリッド ---- */
 .bottle-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:14px}
@@ -147,6 +151,25 @@ textarea{min-height:88px;resize:vertical}
 .rating{color:var(--gold2);letter-spacing:.05em;font-size:14px}
 .price{font-weight:800;color:var(--gold2);font-family:var(--serif)}
 .empty{text-align:center;color:var(--muted);padding:34px 16px;border:1px dashed var(--line2);border-radius:14px}
+
+/* ---- タグ選択（登録・編集フォーム） ---- */
+.tag-picker{display:flex;flex-wrap:wrap;gap:8px;padding:11px;border:1px solid var(--line2);border-radius:10px;background:#160f09}
+.tagchip{border:1px solid var(--line2);background:#241c13;color:var(--muted);padding:9px 14px;border-radius:999px;font-size:13px;line-height:1.25;
+  transition:transform .12s,border-color .14s,color .14s,background .14s;max-width:100%;overflow-wrap:anywhere;text-align:left;min-height:38px}
+.tagchip:hover{border-color:var(--gold);color:var(--cream)}
+.tagchip.on{background:linear-gradient(135deg,var(--gold2),var(--copper));border-color:transparent;color:#241407;font-weight:800}
+.tagchip.on:hover{transform:translateY(-1px)}
+.tag-picker .notice{width:100%}
+
+/* ---- タグ管理（設定） ---- */
+.tag-rows{display:grid;gap:8px;margin:10px 0}
+.tag-row{display:grid;grid-template-columns:auto 1fr auto;gap:10px;align-items:center;border:1px solid var(--line);
+  border-radius:12px;padding:9px 11px;background:#191309;transition:border-color .14s,background .14s}
+.tag-row.drag-over{border-color:var(--gold);background:rgba(215,163,67,.1)}
+.tag-row.dragging{opacity:.5}
+.tag-row .handle{cursor:grab;color:var(--dim);font-size:16px;padding:4px 3px;user-select:none;line-height:1}
+.tag-row .nm{min-width:0;overflow-wrap:anywhere;font-size:14px}
+.tag-row .acts{display:flex;gap:6px;flex-wrap:wrap;justify-content:flex-end}
 
 /* ---- グラス(残量) ---- */
 .glass{position:relative;width:34px;height:44px;margin:0 auto;flex:none}
@@ -247,7 +270,6 @@ tr:hover td{background:rgba(215,163,67,.05)}
   .bottle-grid{grid-template-columns:repeat(2,1fr)}
   .open-grid{grid-template-columns:repeat(2,1fr)}
   .form-grid{grid-template-columns:repeat(2,1fr)}.span4{grid-column:span 2}
-  .filters{grid-template-columns:1fr 1fr}
   .chart-grid,.two,.review-grid{grid-template-columns:1fr}
   .detail-top{grid-template-columns:1fr}
   .detail-img{width:min(100%,420px);margin-inline:auto}
@@ -255,7 +277,11 @@ tr:hover td{background:rgba(215,163,67,.05)}
 }
 @media(max-width:560px){
   .app{padding:12px 10px 50px}
-  .stats,.bottle-grid,.open-grid,.form-grid,.filters{grid-template-columns:1fr}
+  .stats,.bottle-grid,.open-grid,.form-grid{grid-template-columns:1fr}
+  .filters{grid-template-columns:1fr}
+  .filters .f-wide{grid-column:span 1}
+  .tag-row{grid-template-columns:auto 1fr}
+  .tag-row .acts{grid-column:1/-1;justify-content:flex-start}
   .span2,.span4{grid-column:span 1}
   .rankbar{grid-template-columns:auto 1fr;gap:11px}.rank-xp{grid-column:2;text-align:left}
   .wish{grid-template-columns:40px 1fr}.wish .actions{grid-column:2}
@@ -289,7 +315,7 @@ tr:hover td{background:rgba(215,163,67,.05)}
 <div id="toastHost"></div>
 <script>
 /* ===== Whisky Cabinet v1.0.2 コア ===== */
-const APP_VERSION="1.0.5", DATA_VERSION=2;
+const APP_VERSION="1.0.6", DATA_VERSION=3;
 const KEY="whisky_cabinet_v1";
 const OLD_KEYS=["whisky_cabinet_v03","whisky_cabinet_v02","whisky_cellar_v01"];
 /* ---- IndexedDB（写真を含む本体データの保存先。localStorageの容量上限を回避） ---- */
@@ -323,10 +349,11 @@ async function idbSet(key,val){
 
 const tasteDefs=[["smoky","スモーキー"],["sweet","甘さ"],["fruity","フルーティー"],["spicy","スパイシー"],["smooth","スムース"],["body","ボディ"],["finish","余韻"]];
 const countries=["スコットランド","日本","アメリカ","アイルランド","カナダ","台湾","インド","イングランド","ウェールズ","フランス","オーストラリア","その他"];
-const regions=["アイラ","スペイサイド","ハイランド","ローランド","キャンベルタウン","アイランズ","テネシー","ケンタッキー","その他"];
+const regions=["アイラ","スペイサイド","ハイランド","ローランド","キャンベルタウン","アイランズ","テネシー","ケンタッキー","ジャパニーズ","アイリッシュ","カナディアン","台湾","インド","その他"];
 const types=["シングルモルト","ブレンデッド","ブレンデッドモルト","グレーン","バーボン","テネシーウイスキー","ライ","アイリッシュ","ジャパニーズ","コーン","その他"];
 const STATUSES=["未開栓","開栓済み","飲み切り","手放した"];
-const CHART_COLORS=["#d7a343","#c8862f","#b06a2c","#e0b060","#8a5a24","#c79a63","#9c6b3a","#e7c079","#7a4e28","#d0a24e"];
+const CHART_COLORS=["#d7a343","#c8862f","#b06a2c","#e0b060","#8a5a24","#c79a63","#9c6b3a","#e7c079","#7a4e28","#d0a24e",
+  "#a8763f","#e8b980","#6f4520","#c99a4e","#8f6234","#dcae63"];
 
 /* ---- 利き酒師ランク ---- */
 const RANKS=[
@@ -390,16 +417,33 @@ function today(date=new Date()){
 function nowTime(){return new Date().toTimeString().slice(0,8)}
 function uid(){return (crypto.randomUUID?crypto.randomUUID():Date.now().toString(36)+Math.random().toString(36).slice(2))}
 
+/* ---- タグ設定のユーティリティ（前後空白を除去し、重複は先勝ちで1件にまとめる） ---- */
+function tagName(t){return String(t??"").trim()}
+function dedupeTags(list){
+  const out=[],seen=new Set();
+  for(const raw of (Array.isArray(list)?list:[])){const t=tagName(raw);if(!t||seen.has(t))continue;seen.add(t);out.push(t);}
+  return out;
+}
+function collectBottleTags(bottles){
+  const out=[];
+  for(const b of (Array.isArray(bottles)?bottles:[]))for(const t of (Array.isArray(b?.tags)?b.tags:[]))out.push(t);
+  return dedupeTags(out);
+}
+// 設定済みタグ一覧＋ボトル側で実際に使われているタグ（設定側の並び順を優先し、未登録分を末尾に補完）
+function mergeTagList(declared,bottles){return dedupeTags([...(Array.isArray(declared)?declared:[]),...collectBottleTags(bottles)]);}
+function getTags(){return Array.isArray(state.settings?.tags)?state.settings.tags:[]}
+
 function freshState(withSample){
   const r1=uid(),r2=uid(),now=nowISO();
   const s={dataVersion:DATA_VERSION,reviewers:[{id:r1,name:"レビュアー1"},{id:r2,name:"レビュアー2"}],
-    bottles:[],wishlist:[],snapshots:[],badges:{},settings:{maxOpen:10,staleDays:60},
-    changelog:[{v:"1.0.0",d:today(),t:"リニューアル初版。ランク・バッジ・レーダーチャート・棚卸し記録を追加"},{v:"1.0.1",d:today(),t:"サンプル実績除外・日付・抽選・復元・保存安全性を修正"},{v:"1.0.2",d:today(),t:"写真を高解像度化し、一覧・詳細・抽選画面で切り抜かず全体表示するよう改善"},{v:"1.0.3",d:today(),t:"保存先をlocalStorageからIndexedDBへ移行。写真をたくさん登録しても容量上限に達しにくくなりました（既存データは自動で引き継ぎ）"},{v:"1.0.4",d:today(),t:"保存の安全性を強化：IndexedDBへの保存結果を正しく判定・バックアップ復元失敗時は元データへ自動で戻す・保存できない時は画面上部に警告を表示・旧localStorageの再移行を防止"},{v:"1.0.5",d:today(),t:"開栓棚をボトル棚と同じカード表示へ変更。銘柄名が縦書き状になるレイアウト崩れを修正し、写真・残量・価格・操作を見やすく整理"}]};
+    bottles:[],wishlist:[],snapshots:[],badges:{},settings:{maxOpen:10,staleDays:60,tags:[]},
+    changelog:[{v:"1.0.0",d:today(),t:"リニューアル初版。ランク・バッジ・レーダーチャート・棚卸し記録を追加"},{v:"1.0.1",d:today(),t:"サンプル実績除外・日付・抽選・復元・保存安全性を修正"},{v:"1.0.2",d:today(),t:"写真を高解像度化し、一覧・詳細・抽選画面で切り抜かず全体表示するよう改善"},{v:"1.0.3",d:today(),t:"保存先をlocalStorageからIndexedDBへ移行。写真をたくさん登録しても容量上限に達しにくくなりました（既存データは自動で引き継ぎ）"},{v:"1.0.4",d:today(),t:"保存の安全性を強化：IndexedDBへの保存結果を正しく判定・バックアップ復元失敗時は元データへ自動で戻す・保存できない時は画面上部に警告を表示・旧localStorageの再移行を防止"},{v:"1.0.5",d:today(),t:"開栓棚をボトル棚と同じカード表示へ変更。銘柄名が縦書き状になるレイアウト崩れを修正し、写真・残量・価格・操作を見やすく整理"},{v:"1.0.6",d:today(),t:"地域別絞り込み・写真有無フィルター・地域別コレクショングラフ・タグのタップ選択・タグ管理（追加/編集/削除/並べ替え）を追加"}]};
   if(withSample){
     s.bottles=[
       {id:uid(),name:"サンプル：アイラモルト 10年",brand:"Sample Distillery",country:"スコットランド",region:"アイラ",type:"シングルモルト",age:10,abv:46,volume:700,price:5500,purchaseDate:"",openedDate:"",status:"未開栓",remaining:100,rarity:2,tags:["煙","潮"],ratings:{[r1]:5},taste:{smoky:5,sweet:2,fruity:2,spicy:3,smooth:2,body:4,finish:5},notes:"編集・削除できるサンプルです。",image:"",sample:true,createdAt:now,updatedAt:now},
       {id:uid(),name:"サンプル：ブレンデッド",brand:"Sample Blend",country:"スコットランド",region:"ハイランド",type:"ブレンデッド",age:0,abv:40,volume:700,price:1500,purchaseDate:"",openedDate:today(),status:"開栓済み",remaining:75,rarity:1,tags:["普段飲み","ハイボール"],ratings:{[r1]:4},taste:{smoky:2,sweet:3,fruity:2,spicy:2,smooth:4,body:3,finish:3},notes:"サンプルです。",image:"",sample:true,createdAt:now,updatedAt:now}
     ];
+    s.settings.tags=collectBottleTags(s.bottles); // サンプルのタグもタグ設定一覧へ登録
   }
   return s;
 }
@@ -416,12 +460,15 @@ function normalize(s){
   const oldVersion=Number(s?.dataVersion)||1;
   s.dataVersion=DATA_VERSION;
   s.reviewers=Array.isArray(s.reviewers)&&s.reviewers.length?s.reviewers:[{id:uid(),name:"レビュアー1"}];
-  s.bottles=Array.isArray(s.bottles)?s.bottles.map(b=>({...b,ratings:b.ratings&&typeof b.ratings==="object"?b.ratings:{},rarity:Number(b.rarity)||1,taste:b.taste&&typeof b.taste==="object"?b.taste:{},tags:Array.isArray(b.tags)?b.tags:[],remaining:b.remaining==null?100:Number(b.remaining)})):[];
+  s.bottles=Array.isArray(s.bottles)?s.bottles.map(b=>({...b,ratings:b.ratings&&typeof b.ratings==="object"?b.ratings:{},rarity:Number(b.rarity)||1,taste:b.taste&&typeof b.taste==="object"?b.taste:{},tags:dedupeTags(b.tags),remaining:b.remaining==null?100:Number(b.remaining)})):[];
   s.wishlist=Array.isArray(s.wishlist)?s.wishlist:[];
   s.snapshots=Array.isArray(s.snapshots)?s.snapshots:[];
   s.badges=s.badges&&typeof s.badges==="object"&&!Array.isArray(s.badges)?s.badges:{};
   s.settings=Object.assign({maxOpen:10,staleDays:60},s.settings&&typeof s.settings==="object"?s.settings:{});
   s.settings.maxOpen=Math.max(1,Math.min(30,Number(s.settings.maxOpen)||10));
+  // タグ設定一覧：既存の並び順を保ちつつ、ボトル側で使われている未登録タグを自動で補完する。
+  // v1.0.5以前のデータや、タグ設定を持たない古いバックアップでは、ボトルのタグから一覧を再構築する。
+  s.settings.tags=mergeTagList(s.settings.tags,s.bottles);
   s.changelog=Array.isArray(s.changelog)?s.changelog:[{v:APP_VERSION,d:today(),t:"初版"}];
   if(oldVersion<2){
     // v1.0.0でサンプルから獲得した可能性のあるバッジを、実データだけで再検証する。
@@ -435,6 +482,7 @@ function normalize(s){
   if(!s.changelog.some(c=>c.v==="1.0.3"))s.changelog.push({v:"1.0.3",d:today(),t:"保存先をlocalStorageからIndexedDBへ移行。写真をたくさん登録しても容量上限に達しにくくなりました（既存データは自動で引き継ぎ）"});
   if(!s.changelog.some(c=>c.v==="1.0.4"))s.changelog.push({v:"1.0.4",d:today(),t:"保存の安全性を強化：IndexedDBへの保存結果を正しく判定・バックアップ復元失敗時は元データへ自動で戻す・保存できない時は画面上部に警告を表示・旧localStorageの再移行を防止"});
   if(!s.changelog.some(c=>c.v==="1.0.5"))s.changelog.push({v:"1.0.5",d:today(),t:"開栓棚をボトル棚と同じカード表示へ変更。銘柄名が縦書き状になるレイアウト崩れを修正し、写真・残量・価格・操作を見やすく整理"});
+  if(!s.changelog.some(c=>c.v==="1.0.6"))s.changelog.push({v:"1.0.6",d:today(),t:"地域別絞り込み・写真有無フィルター・地域別コレクショングラフ・タグのタップ選択・タグ管理（追加/編集/削除/並べ替え）を追加"});
   return s;
 }
 async function loadState(){
@@ -473,7 +521,7 @@ function clearOldLocalStorage(){
   try{ localStorage.removeItem(KEY); OLD_KEYS.forEach(k=>localStorage.removeItem(k)); }
   catch(e){ console.error("旧localStorage削除に失敗",e); }
 }
-let state=freshState(false), editRatings={}, drawnBottleId=null, knownBadges=null, drawTimer=null, drawToken=0;
+let state=freshState(false), editRatings={}, editTags=[], drawnBottleId=null, knownBadges=null, drawTimer=null, drawToken=0;
 
 function storageBytes(){try{return new Blob([JSON.stringify(state)]).size}catch(e){return 0}}
 function storageInfoText(){const b=storageBytes(),mb=b/1024/1024;return `現在のデータ量：約 ${mb.toFixed(2)} MB（IndexedDBに保存。写真を多く登録しても余裕があります）`}
@@ -663,6 +711,8 @@ function vDashboard(m){
   // データ
   const typeData=Object.entries(ow.reduce((a,b)=>{a[b.type]=(a[b.type]||0)+1;return a},{})).filter(d=>d[1]>0).sort((a,b)=>b[1]-a[1]);
   const countryData=Object.entries(ow.reduce((a,b)=>{a[b.country]=(a[b.country]||0)+1;return a},{})).filter(d=>d[1]>0).sort((a,b)=>b[1]-a[1]);
+  // 地域別コレクション：所有中（未開栓・開栓済み）のみを集計。地域未登録は「未設定」にまとめる。
+  const regionData=Object.entries(ow.reduce((a,b)=>{const k=String(b.region||"").trim()||"未設定";a[k]=(a[k]||0)+1;return a},{})).filter(d=>d[1]>0).sort((a,b)=>b[1]-a[1]);
   const priceData=[["〜2千",0],["2-5千",0],["5千-1万",0],["1-3万",0],["3万〜",0],["未登録",0]];
   ow.forEach(b=>{const k=priceBandKey(b.price);priceData[{under2000:0,"2000to4999":1,"5000to9999":2,"10000to29999":3,"30000plus":4,unknown:5}[k]][1]++;});
   const flavorVals=tasteDefs.map(([k])=>{const v=ow.map(b=>Number(b.taste?.[k])||0).filter(Boolean);return v.length?v.reduce((a,c)=>a+c,0)/v.length:0;});
@@ -680,6 +730,7 @@ function vDashboard(m){
   <div class="chart-grid">
     <div class="card chart-card"><h3>種類別コレクション</h3><canvas id="typeChart"></canvas>${typeData.length?donutLegend(typeData):'<div class="empty">データがありません</div>'}</div>
     <div class="card chart-card"><h3>生産国</h3><canvas id="countryChart"></canvas>${countryData.length?donutLegend(countryData):'<div class="empty">データがありません</div>'}</div>
+    <div class="card chart-card"><h3>地域別コレクション</h3><canvas id="regionChart"></canvas>${regionData.length?donutLegend(regionData):'<div class="empty">データがありません</div>'}</div>
     <div class="card chart-card"><h3>価格帯</h3><canvas id="priceChart"></canvas></div>
     <div class="card chart-card"><h3>コレクション本数の推移</h3><canvas id="trendChart" style="width:100%"></canvas></div>
   </div>
@@ -691,22 +742,37 @@ function vDashboard(m){
   document.getElementById("flavorBars").innerHTML=tasteDefs.map((d,i)=>{const v=flavorVals[i];return `<div style="display:grid;grid-template-columns:82px 1fr 30px;gap:8px;align-items:center;margin:7px 0"><span class="muted" style="font-size:12px">${d[1]}</span><div style="height:9px;background:#15100a;border-radius:9px;overflow:hidden;border:1px solid #3b2f22"><i style="display:block;height:100%;width:${v/5*100}%;background:linear-gradient(90deg,#8d5a1d,#f0cb78);border-radius:9px"></i></div><strong class="num" style="color:#f0cb78;font-size:12px">${v?v.toFixed(1):"—"}</strong></div>`;}).join("");
   if(typeData.length)drawDonut(document.getElementById("typeChart"),typeData);
   if(countryData.length)drawDonut(document.getElementById("countryChart"),countryData);
+  if(regionData.length)drawDonut(document.getElementById("regionChart"),regionData);
   drawBars(document.getElementById("priceChart"),priceData,Math.max(...priceData.map(d=>d[1]),1));
   drawLine(document.getElementById("trendChart"),snapPts);
 }
 
 /* ===== ボトル一覧 ===== */
-const bf={q:"",status:"",type:"",price:"",sort:"updated"};
+const bf={q:"",region:"",status:"",type:"",price:"",photo:"",sort:"updated"};
+function hasPhoto(b){return !!(b&&typeof b.image==="string"&&b.image.trim())}
+// 絞り込み用の地域一覧：標準の地域を定義順で並べ、既存データにしかない地域は末尾へ追加する
+function regionFilterOptions(){
+  const extra=[...new Set(state.bottles.map(b=>String(b.region||"").trim()).filter(Boolean))].filter(v=>!regions.includes(v)).sort();
+  return [...regions,...extra];
+}
+function resetBottleFilters(){
+  bf.q="";bf.region="";bf.status="";bf.type="";bf.price="";bf.photo="";
+  vBottles(document.getElementById("main"));
+}
 function vBottles(m){
   const typeVals=[...new Set(state.bottles.map(b=>b.type).filter(Boolean))].sort();
+  const regionVals=regionFilterOptions();
   m.innerHTML=`<div class="card">
     <div class="section-title"><h2>ボトル棚</h2><span id="bottleCount" class="muted"></span></div>
     <div class="filters">
-      <input id="fq" placeholder="銘柄・蒸留所・地域・タグで検索" value="${escapeHtml(bf.q)}" oninput="bf.q=this.value;refreshBottles()">
-      <select id="fst" onchange="bf.status=this.value;refreshBottles()"><option value="">すべての状態</option>${STATUSES.map(s=>`<option ${bf.status===s?"selected":""}>${s}</option>`).join("")}</select>
-      <select id="ftp" onchange="bf.type=this.value;refreshBottles()"><option value="">すべての種類</option>${typeVals.map(v=>`<option ${bf.type===v?"selected":""}>${escapeHtml(v)}</option>`).join("")}</select>
-      <select id="fpr" onchange="bf.price=this.value;refreshBottles()"><option value="">すべての価格帯</option>${Object.entries(PRICE_LABELS).map(([k,l])=>`<option value="${k}" ${bf.price===k?"selected":""}>${l}</option>`).join("")}</select>
-      <select id="fsr" onchange="bf.sort=this.value;refreshBottles()">${[["updated","更新順"],["name","名前順"],["rating","評価が高い順"],["price","価格が高い順"],["age","熟成年数順"]].map(([v,l])=>`<option value="${v}" ${bf.sort===v?"selected":""}>${l}</option>`).join("")}</select>
+      <input class="f-wide" id="fq" placeholder="銘柄・蒸留所・地域・タグで検索" value="${escapeHtml(bf.q)}" oninput="bf.q=this.value;refreshBottles()">
+      <select id="frg" aria-label="地域" onchange="bf.region=this.value;refreshBottles()"><option value="">すべての地域</option>${regionVals.map(v=>`<option ${bf.region===v?"selected":""}>${escapeHtml(v)}</option>`).join("")}</select>
+      <select id="fst" aria-label="状態" onchange="bf.status=this.value;refreshBottles()"><option value="">すべての状態</option>${STATUSES.map(s=>`<option ${bf.status===s?"selected":""}>${s}</option>`).join("")}</select>
+      <select id="ftp" aria-label="種類" onchange="bf.type=this.value;refreshBottles()"><option value="">すべての種類</option>${typeVals.map(v=>`<option ${bf.type===v?"selected":""}>${escapeHtml(v)}</option>`).join("")}</select>
+      <select id="fpr" aria-label="価格帯" onchange="bf.price=this.value;refreshBottles()"><option value="">すべての価格帯</option>${Object.entries(PRICE_LABELS).map(([k,l])=>`<option value="${k}" ${bf.price===k?"selected":""}>${l}</option>`).join("")}</select>
+      <select id="fph" aria-label="写真の有無" onchange="bf.photo=this.value;refreshBottles()">${[["","すべての写真"],["with","写真あり"],["without","写真なし"]].map(([v,l])=>`<option value="${v}" ${bf.photo===v?"selected":""}>${l}</option>`).join("")}</select>
+      <select id="fsr" aria-label="並べ替え" onchange="bf.sort=this.value;refreshBottles()">${[["updated","更新順"],["name","名前順"],["rating","評価が高い順"],["price","価格が高い順"],["age","熟成年数順"]].map(([v,l])=>`<option value="${v}" ${bf.sort===v?"selected":""}>${l}</option>`).join("")}</select>
+      <button class="btn ghost" type="button" onclick="resetBottleFilters()">条件をリセット</button>
     </div>
     <div id="bottleGrid" class="bottle-grid"></div>
   </div>`;
@@ -726,7 +792,12 @@ function bottleCard(b){
 function refreshBottles(){
   const q=bf.q.toLowerCase();
   let arr=state.bottles.filter(b=>{const hay=[b.name,b.brand,b.country,b.region,b.type,...(b.tags||[])].join(" ").toLowerCase();
-    return(!q||hay.includes(q))&&(!bf.status||b.status===bf.status)&&(!bf.type||b.type===bf.type)&&(!bf.price||priceBandKey(b.price)===bf.price);});
+    return(!q||hay.includes(q))
+      &&(!bf.region||String(b.region||"").trim()===bf.region)
+      &&(!bf.status||b.status===bf.status)
+      &&(!bf.type||b.type===bf.type)
+      &&(!bf.price||priceBandKey(b.price)===bf.price)
+      &&(!bf.photo||(bf.photo==="with"?hasPhoto(b):!hasPhoto(b)));});
   const sorters={name:(a,b)=>a.name.localeCompare(b.name,"ja"),rating:(a,b)=>avgRating(b)-avgRating(a),price:(a,b)=>(b.price||0)-(a.price||0),age:(a,b)=>(b.age||0)-(a.age||0),updated:(a,b)=>(b.updatedAt||"").localeCompare(a.updatedAt||"")};
   arr.sort(sorters[bf.sort]||sorters.updated);
   const cnt=document.getElementById("bottleCount");if(cnt)cnt.textContent=`${arr.length} / ${state.bottles.length}本`;
@@ -753,7 +824,7 @@ function vForm(m){
       <div><label>開栓日</label><input id="f_openedDate" type="date"></div>
       <div><label>状態</label><select id="f_status">${STATUSES.map(s=>`<option>${s}</option>`).join("")}</select></div>
       <div><label>残量</label><select id="f_remaining">${[[100,"100%"],[75,"75%"],[50,"50%"],[25,"25%"],[10,"残りわずか"],[0,"空"]].map(([v,l])=>`<option value="${v}">${l}</option>`).join("")}</select></div>
-      <div class="span2"><label>タグ（カンマ区切り）</label><input id="f_tags" placeholder="煙, バニラ, ハイボール"></div>
+      <div class="span4"><label>タグ（タップで選択／もう一度タップで解除）</label><div id="f_tagPicker" class="tag-picker"></div></div>
       <div class="span2"><label id="f_photoLabel">ボトル写真（高画質・全体表示）</label><input id="f_imageFile" type="file" accept="image/*"></div>
       <div class="span2" id="f_cameraArea" hidden><label>カメラで撮影</label><input id="f_cameraFile" type="file" accept="image/*" capture="environment"></div>
     </div>
@@ -776,16 +847,35 @@ function afterFormRender(){
   cam.hidden=!mob;lbl.textContent=mob?"写真ライブラリから選択（高画質・全体表示）":"ボトル写真（高画質・全体表示）";
   const libraryInput=document.getElementById("f_imageFile"),cameraInput=document.getElementById("f_cameraFile");
   if(libraryInput&&cameraInput){libraryInput.onchange=()=>{if(libraryInput.files.length)cameraInput.value="";};cameraInput.onchange=()=>{if(cameraInput.files.length)libraryInput.value="";};}
-  renderRatingEditors();
+  renderRatingEditors();renderTagPicker();
   if(!document.getElementById("f_id").value&&!formLoaded)applyBottleToForm(null);
 }
 let formLoaded=false;
+/* ---- タグのタップ選択（設定画面のタグ管理で決めた並び順で表示） ---- */
+function renderTagPicker(){
+  const host=document.getElementById("f_tagPicker");if(!host)return;
+  const tags=getTags();
+  host.innerHTML="";
+  if(!tags.length){
+    const msg=document.createElement("div");msg.className="notice info";
+    msg.textContent="タグが登録されていません。設定画面からタグを追加できます。";
+    host.appendChild(msg);return;
+  }
+  tags.forEach(t=>{
+    const on=editTags.includes(t);
+    const btn=document.createElement("button");
+    btn.type="button";btn.className="tagchip"+(on?" on":"");btn.textContent=t;
+    btn.setAttribute("aria-pressed",on?"true":"false");
+    btn.onclick=()=>{editTags=editTags.includes(t)?editTags.filter(x=>x!==t):[...editTags,t];renderTagPicker();};
+    host.appendChild(btn);
+  });
+}
 function renderRatingEditors(){
   const host=document.getElementById("f_reviewers");if(!host)return;
   host.innerHTML=state.reviewers.map(r=>`<div class="review-box"><label>${escapeHtml(r.name)}</label><div class="stars" id="stars_${r.id}"></div></div>`).join("");
   state.reviewers.forEach(r=>{const el=document.getElementById("stars_"+r.id);for(let i=1;i<=5;i++){const btn=document.createElement("button");btn.type="button";btn.textContent="★";btn.className=(editRatings[r.id]||0)>=i?"on":"";btn.onclick=()=>{editRatings[r.id]=editRatings[r.id]===i?0:i;renderRatingEditors();};el.appendChild(btn);} });
 }
-function newBottle(){editRatings={};formLoaded=false;if(currentPage!=="form"){return;}applyBottleToForm(null);}
+function newBottle(){editRatings={};editTags=[];formLoaded=false;if(currentPage!=="form"){return;}applyBottleToForm(null);}
 function applyBottleToForm(b){
   const g=id=>document.getElementById(id);
   g("f_id").value=b?.id||"";g("formTitle").textContent=b?"ボトルを編集":"ボトルを棚に加える";
@@ -793,11 +883,19 @@ function applyBottleToForm(b){
   g("f_country").value=b?.country||countries[0];g("f_region").value=b?.region||regions[0];g("f_type").value=b?.type||types[0];
   g("f_age").value=b?.age||"";g("f_abv").value=b?.abv||"";g("f_volume").value=b?.volume??700;g("f_price").value=b?.price||"";
   g("f_rarity").value=b?.rarity||1;g("f_purchaseDate").value=b?.purchaseDate||"";g("f_openedDate").value=b?.openedDate||"";
-  g("f_status").value=b?.status||"未開栓";g("f_remaining").value=b?.remaining??100;g("f_tags").value=(b?.tags||[]).join(", ");
+  g("f_status").value=b?.status||"未開栓";g("f_remaining").value=b?.remaining??100;
   g("f_notes").value=b?.notes||"";if(g("f_imageFile"))g("f_imageFile").value="";if(g("f_cameraFile"))g("f_cameraFile").value="";
+  editTags=dedupeTags(b?.tags);renderTagPicker(); // 既存ボトルのタグを最初から選択状態にする
   editRatings={...(b?.ratings||{})};renderRatingEditors();
   tasteDefs.forEach(([k])=>{const v=b?.taste?.[k]||3;const r=g("ft_"+k),vv=g("ftv_"+k);if(r){r.value=v;vv.textContent=v;}});
   formLoaded=true;
+}
+// 選択中のタグを、設定画面で決めた並び順に揃えて保存用の文字列配列にする
+function selectedTagsInOrder(){
+  const tags=getTags(),sel=dedupeTags(editTags);
+  const known=tags.filter(t=>sel.includes(t));
+  const unknown=sel.filter(t=>!tags.includes(t)); // 通常は発生しないが、取りこぼし防止
+  return [...known,...unknown];
 }
 function editBottle(id){const b=state.bottles.find(x=>x.id===id);if(!b)return;go("form");applyBottleToForm(b);}
 async function compressImage(file){
@@ -824,7 +922,7 @@ async function saveBottle(e){
   const b={id:id||uid(),name:g("f_name").value.trim(),brand:g("f_brand").value.trim(),country:g("f_country").value,region:g("f_region").value,type:g("f_type").value,
     age:Number(g("f_age").value)||0,abv:Number(g("f_abv").value)||0,volume:Number(g("f_volume").value)||0,price:Number(g("f_price").value)||0,
     purchaseDate:g("f_purchaseDate").value,openedDate,status,remaining,rarity:Number(g("f_rarity").value)||1,
-    tags:g("f_tags").value.split(",").map(s=>s.trim()).filter(Boolean),ratings:{...editRatings},taste,notes:g("f_notes").value.trim(),
+    tags:selectedTagsInOrder(),ratings:{...editRatings},taste,notes:g("f_notes").value.trim(),
     image,createdAt:existing?.createdAt||now,updatedAt:now};
   state.bottles=id?state.bottles.map(x=>x.id===id?b:x):[b,...state.bottles];
   persist();toast("🥃",id?"更新しました":"棚に加えました",b.name);newBottle();go("bottles");
@@ -1036,6 +1134,15 @@ function vSettings(m){
       <div style="margin-top:10px"><button class="btn primary" onclick="saveSettings()">保存</button></div>
     </div>
   </div>
+  <div class="card" style="margin-top:14px"><h2 style="font-family:var(--serif);margin-bottom:10px">タグ管理</h2>
+    <p class="muted">登録・編集画面でタップ選択できるタグを管理します。並び順はそのまま選択画面に反映されます。</p>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px">
+      <input id="newTag" placeholder="タグ名を入力（例：スモーキー）" style="flex:1 1 200px;min-width:0" onkeydown="if(event.key==='Enter'){event.preventDefault();addTag();}">
+      <button class="btn primary" onclick="addTag()">追加</button>
+    </div>
+    <div id="tagList" class="tag-rows"></div>
+    <div class="notice info">タグ名を変更すると、そのタグが付いている全ボトルのタグも自動で書き換わります。削除した場合も全ボトルから取り除かれます。</div>
+  </div>
   <div class="card" style="margin-top:14px"><h2 style="font-family:var(--serif);margin-bottom:10px">データ管理</h2>
     <div style="display:flex;gap:8px;flex-wrap:wrap">
       <button class="btn" onclick="exportJSON()">📥 バックアップ保存(JSON)</button>
@@ -1062,7 +1169,90 @@ function vSettings(m){
       <tr><th>更新履歴</th><td>${state.changelog.map(c=>`<div class="num">v${c.v}（${c.d}）：${escapeHtml(c.t)}</div>`).join("")}</td></tr>
     </table></div>
   </div>`;
-  renderReviewerList();
+  renderReviewerList();renderTagManager();
+}
+
+/* ===== タグ管理 ===== */
+let _tagDragFrom=null;
+function renderTagManager(){
+  const host=document.getElementById("tagList");if(!host)return;
+  const tags=getTags();
+  host.innerHTML="";
+  if(!tags.length){
+    const em=document.createElement("div");em.className="empty";
+    em.textContent="タグがまだ登録されていません。上の入力欄から追加できます。";
+    host.appendChild(em);return;
+  }
+  tags.forEach((t,i)=>{
+    const used=state.bottles.filter(b=>(b.tags||[]).includes(t)).length;
+    const row=document.createElement("div");
+    row.className="tag-row";row.draggable=true;row.dataset.index=String(i);
+    const handle=document.createElement("span");handle.className="handle";handle.textContent="⋮⋮";handle.title="ドラッグで並べ替え";
+    const nm=document.createElement("div");nm.className="nm";
+    nm.innerHTML=`${escapeHtml(t)} <span class="dim" style="font-size:12px">（${used}本）</span>`;
+    const acts=document.createElement("div");acts.className="acts";
+    const mk=(label,cls,fn,disabled)=>{const b=document.createElement("button");b.type="button";b.className="btn small "+cls;b.textContent=label;b.disabled=!!disabled;if(disabled)b.style.opacity=".4";else b.onclick=fn;return b;};
+    acts.appendChild(mk("↑","ghost",()=>moveTag(i,-1),i===0));
+    acts.appendChild(mk("↓","ghost",()=>moveTag(i,1),i===tags.length-1));
+    acts.appendChild(mk("編集","",()=>renameTag(i)));
+    acts.appendChild(mk("削除","danger",()=>deleteTag(i)));
+    row.append(handle,nm,acts);
+    row.addEventListener("dragstart",e=>{_tagDragFrom=i;row.classList.add("dragging");try{e.dataTransfer.effectAllowed="move";e.dataTransfer.setData("text/plain",String(i));}catch(err){}});
+    row.addEventListener("dragend",()=>{row.classList.remove("dragging");_tagDragFrom=null;});
+    row.addEventListener("dragover",e=>{if(_tagDragFrom===null)return;e.preventDefault();row.classList.add("drag-over");});
+    row.addEventListener("dragleave",()=>row.classList.remove("drag-over"));
+    row.addEventListener("drop",e=>{e.preventDefault();row.classList.remove("drag-over");if(_tagDragFrom===null||_tagDragFrom===i)return;reorderTag(_tagDragFrom,i);_tagDragFrom=null;});
+    host.appendChild(row);
+  });
+}
+function addTag(){
+  const el=document.getElementById("newTag");if(!el)return;
+  const name=tagName(el.value);
+  if(!name){alert("タグ名を入力してください（空白のみは登録できません）。");return;}
+  if(getTags().some(t=>t===name)){alert(`「${name}」は既に登録されています。別の名前を入力してください。`);return;}
+  state.settings.tags=[...getTags(),name];
+  el.value="";persist();toast("🏷️","タグを追加しました",name);
+}
+function renameTag(i){
+  const tags=getTags(),old=tags[i];if(old==null)return;
+  const input=prompt("タグ名を変更します",old);if(input===null)return;
+  const name=tagName(input);
+  if(!name){alert("タグ名を入力してください（空白のみは登録できません）。");return;}
+  if(name===old)return;
+  const dup=tags.some((t,j)=>j!==i&&t===name);
+  if(dup&&!confirm(`「${name}」は既に登録されています。2つのタグを1つにまとめますか？`))return;
+  const next=tags.slice();next[i]=name;
+  state.settings.tags=dedupeTags(next);
+  // そのタグが設定されている全ボトルを新しい名前へ。重複した場合は1件にまとめる。
+  state.bottles.forEach(b=>{
+    const list=Array.isArray(b.tags)?b.tags:[];
+    if(list.includes(old))b.tags=dedupeTags(list.map(t=>t===old?name:t));
+  });
+  editTags=dedupeTags(editTags.map(t=>t===old?name:t));
+  persist();toast("🏷️","タグ名を変更しました",`${old} → ${name}`);
+}
+function deleteTag(i){
+  const tags=getTags(),name=tags[i];if(name==null)return;
+  if(!confirm(`タグ「${name}」を削除しますか？このタグは登録済みボトルからも削除されます。`))return;
+  state.settings.tags=tags.filter((t,j)=>j!==i);
+  state.bottles.forEach(b=>{
+    const list=Array.isArray(b.tags)?b.tags:[];
+    if(list.includes(name))b.tags=list.filter(t=>t!==name);
+  });
+  editTags=editTags.filter(t=>t!==name);
+  persist();toast("🗑️","タグを削除しました",name);
+}
+function moveTag(i,dir){
+  const tags=getTags().slice(),j=i+dir;
+  if(i<0||i>=tags.length||j<0||j>=tags.length)return;
+  [tags[i],tags[j]]=[tags[j],tags[i]];
+  state.settings.tags=tags;persist();
+}
+function reorderTag(from,to){
+  const tags=getTags().slice();
+  if(from<0||from>=tags.length||to<0||to>=tags.length||from===to)return;
+  const [moved]=tags.splice(from,1);tags.splice(to,0,moved);
+  state.settings.tags=tags;persist();
 }
 function renderReviewerList(){const el=document.getElementById("reviewerList");if(!el)return;el.innerHTML=state.reviewers.map(r=>`<div class="reviewer"><input value="${escapeHtml(r.name)}" onchange="renameReviewer('${r.id}',this.value)"><button class="btn danger small" onclick="removeReviewer('${r.id}')">削除</button></div>`).join("");}
 function addReviewer(){const el=document.getElementById("newReviewer"),name=el.value.trim();if(!name)return;if(state.reviewers.length>=10){alert("レビュアーは最大10人です。");return;}state.reviewers.push({id:uid(),name});el.value="";persist();}
@@ -1089,7 +1279,10 @@ function validateBackupData(data){
   }
   for(const k of ["wishlist","snapshots","changelog"])if(data[k]!=null&&!Array.isArray(data[k]))throw new Error(`${k}が不正です`);
   if(data.badges!=null&&(typeof data.badges!=="object"||Array.isArray(data.badges)))throw new Error("バッジ情報が不正です");
-  if(data.settings!=null){if(typeof data.settings!=="object"||Array.isArray(data.settings))throw new Error("設定が不正です");const m=Number(data.settings.maxOpen);if(data.settings.maxOpen!=null&&(!Number.isInteger(m)||m<1||m>30))throw new Error("開栓上限が不正です");}
+  if(data.settings!=null){if(typeof data.settings!=="object"||Array.isArray(data.settings))throw new Error("設定が不正です");const m=Number(data.settings.maxOpen);if(data.settings.maxOpen!=null&&(!Number.isInteger(m)||m<1||m>30))throw new Error("開栓上限が不正です");
+    // タグ設定一覧（v1.0.6以降）。無い古いバックアップは許容し、復元時にボトルのタグから再構築する。
+    if(data.settings.tags!=null){if(!Array.isArray(data.settings.tags))throw new Error("タグ設定が不正です");
+      for(const t of data.settings.tags)if(typeof t!=="string")throw new Error("タグ設定が不正です");}}
   return true;
 }
 function exportJSON(){download(`whisky_cabinet_backup_${today()}.json`,JSON.stringify(state,null,2),"application/json");toast("📥","バックアップを保存しました");}
@@ -1135,6 +1328,7 @@ function addSample(){
   if(state.bottles.some(b=>b.sample)){toast("ℹ️","サンプルは既にあります");return;}
   const fs=freshState(true),reviewerId=state.reviewers[0]?.id;
   state.bottles=fs.bottles.map(b=>({...b,ratings:reviewerId?{[reviewerId]:Number(Object.values(b.ratings||{})[0])||0}:{}}));
+  state.settings.tags=mergeTagList(getTags(),state.bottles); // サンプルのタグもタグ設定一覧へ取り込む
   persist();toast("🥃","サンプルを作成しました");go("dashboard");
 }function removeSample(){
   const n=state.bottles.filter(b=>b.sample).length;if(!n){toast("ℹ️","サンプルはありません");return;}
@@ -1159,7 +1353,7 @@ function runIntegrity(){
 }
 
 /* ===== 全体レンダリング ===== */
-function renderAll(){renderRankbar();if(currentPage==="dashboard")vDashboard(document.getElementById("main"));else if(currentPage==="bottles")refreshBottles();else if(currentPage==="opening")vOpening(document.getElementById("main"));else if(currentPage==="ranks")vRanks(document.getElementById("main"));else if(currentPage==="wishlist")vWishlist(document.getElementById("main"));else if(currentPage==="snapshots")vSnapshots(document.getElementById("main"));else if(currentPage==="settings"){renderReviewerList();}else if(currentPage==="form")renderRatingEditors();}
+function renderAll(){renderRankbar();if(currentPage==="dashboard")vDashboard(document.getElementById("main"));else if(currentPage==="bottles")refreshBottles();else if(currentPage==="opening")vOpening(document.getElementById("main"));else if(currentPage==="ranks")vRanks(document.getElementById("main"));else if(currentPage==="wishlist")vWishlist(document.getElementById("main"));else if(currentPage==="snapshots")vSnapshots(document.getElementById("main"));else if(currentPage==="settings"){renderReviewerList();renderTagManager();}else if(currentPage==="form"){renderRatingEditors();renderTagPicker();}}
 async function init(){
   document.getElementById("footer").textContent=`Whisky Cabinet v${APP_VERSION} — Standalone browser app`;
   state=await loadState(); // IndexedDBから読込（無ければlocalStorageから移行）。ここで初めてstateが確定する。
